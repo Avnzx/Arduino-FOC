@@ -364,7 +364,7 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
   current_meas.d = ABcurrent.alpha * _ca + ABcurrent.beta * _sa;
   current_meas.q = ABcurrent.beta * _ca - ABcurrent.alpha * _sa;
 
-  if(current_meas.d+current_meas.q>ocp_protection_limit){
+  if(fabs(current_meas.d)+fabs(current_meas.q)>ocp_protection_limit){
     ocp_cycles_counter+=1;
   }
 
@@ -431,10 +431,16 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
     i_beta_prev=ABcurrent.beta;
 
     flux_observer_angle=_atan2(flux_beta,flux_alpha);
-    if(flux_observer_angle<0) {flux_observer_angle+=_2PI;}
-    
-    bemf=(polarity_correction*(voltage.q -phase_resistance * current_meas.q));
-    flux_observer_velocity=((bemf*KV_rating*_SQRT3*_2PI)/(60.0f));
+    if(polarity_correction<0){
+      flux_observer_angle-=_PI;
+    }
+    while(flux_observer_angle<0){
+      flux_observer_angle+=_2PI;
+    }
+    float iir_coef=0.99;
+    //
+    bemf=bemf*(iir_coef)+(1.0-iir_coef)*(polarity_correction*(voltage.q - phase_resistance * current_meas.q));
+    flux_observer_velocity = flux_observer_velocity*iir_coef+(1.0-iir_coef)*((bemf*KV_rating*_SQRT3*_2PI)/(60.0f)); 
 
     if(bemf>bemf_threshold || bemf<-bemf_threshold){
       bemf_count+=2;
@@ -442,12 +448,12 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
       bemf_count-=2;
       if(bemf_count<0) {bemf_count=0;}
     }
-    if(bemf_count>100){ // use flux observer after 
+    if(bemf_count>fo_hysteresis_threshold){ // use flux observer after 
       bemf_count+=1;
-      if(bemf_count>200){bemf_count=200;}
+      if(bemf_count>2*fo_hysteresis_threshold){bemf_count=2*fo_hysteresis_threshold;}
     }
 
-    if(bemf_count>102){
+    if(bemf_count>fo_hysteresis_threshold){
       // sensorless_out=flux_observer_angle;
       // sensorless_velocity = flux_observer_velocity;
       hfi_v_act=0;
@@ -531,21 +537,7 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
     current_err.q = polarity_correction * current_setpoint.q - current_meas.q;
     current_err.d = polarity_correction * current_setpoint.d - current_meas.d;
 
-    
-    voltage_pid.q = PID_current_q(current_err.q, Ts, Ts_div);
-    voltage_pid.d = PID_current_d(current_err.d, Ts, Ts_div);
-    
-
-    // lowpass does a += on the first arg
-    LOWPASS(voltage.q, voltage_pid.q, 0.34f);
-    LOWPASS(voltage.d, voltage_pid.d, 0.34f);
-  
-    voltage.d = _constrain(voltage.d ,-voltage_limit, voltage_limit);
-    voltage.q = _constrain(voltage.q ,-voltage_limit, voltage_limit);
-  
-    voltage.d += hfi_v_act;
-
-    if (bemf_count < 100)
+    if (bemf_count <= fo_hysteresis_threshold)
     {
       sensorless_out = hfi_angle;
       sensorless_velocity = hfi_velocity;
@@ -556,6 +548,25 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
       usedFOlast = true;
     }
     
+    voltage_pid.q = PID_current_q(current_err.q, Ts, Ts_div);
+    voltage_pid.d = PID_current_d(current_err.d, Ts, Ts_div);
+    
+    //voltage_pid.q+= bemf;//+delta_current.q/Ts*Lq+sensorless_velocity*pole_pairs*polarity_correction * current_setpoint.d*Ld;
+    //voltage_pid.d-=sensorless_velocity*pole_pairs*polarity_correction * current_setpoint.q*Lq;//
+
+
+    // lowpass does a += on the first arg
+    // LOWPASS(voltage.q, voltage_pid.q, 0.34f);
+    // LOWPASS(voltage.d, voltage_pid.d, 0.34f);
+
+    voltage.q=voltage_pid.q;//+bemf*pole_pairs+sensorless_velocity*pole_pairs*polarity_correction * current_setpoint.d*Ld;
+    voltage.d=voltage_pid.d;//-sensorless_velocity*pole_pairs*polarity_correction * current_setpoint.q*Lq;;
+  
+    voltage.d = _constrain(voltage.d ,-voltage_limit, voltage_limit);
+    voltage.q = _constrain(voltage.q ,-voltage_limit, voltage_limit);
+  
+    voltage.d += hfi_v_act;
+
     sensorless_out_prev = sensorless_out;
   }
 

@@ -50,13 +50,14 @@ class HFIBLDCMotor: public FOCMotor
 
     float Ts = 1.0f/60000.0f;
     float Ts_L = Ts * ( 1 / Lq - 1 / Ld );
-    float current_bandwidth = 300;
+    float current_bandwidth = 1000;
     float polarity_max_pos=0;
     float polarity_max_neg=0;
     float polarity_detection=0;
     float polarity_alignment_voltage=0.5;
     float bemf_threshold=5;
     float deadtime_compensation=0.0;
+    float fo_hysteresis_threshold=200;
 
     DQCurrent_s current_meas;
     DQCurrent_s current_high;
@@ -182,6 +183,7 @@ class HFIBLDCMotor: public FOCMotor
     float Ts_pp_div = 1.0f / (Ts * pole_pairs);
     float Ts_div = 1.0f / Ts;
     float predivAngleest = 1.0f / (hfi_v * Ts * ( 1.0f / Lq - 1.0f / Ld ) );
+    float fo_prev = 0;
 
 };
 
