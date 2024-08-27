@@ -9,7 +9,7 @@ extern int** trap_120_map;
 extern int** trap_150_map;
 
 
-static inline float IRAM_ATTR _hfinormalizeAngle(float angle) {
+static inline float _hfinormalizeAngle(float angle) {
 	while (angle < 0) { angle += _2PI; }
 	while (angle >=  _2PI) { angle -= _2PI; }
   return angle;
@@ -138,7 +138,7 @@ void HFIBLDCMotor::enable()
   FOC functions
 */
 // FOC initialization function
-int  HFIBLDCMotor::initFOC() {
+int HFIBLDCMotor::initFOC() {
   int exit_flag = 1;
 
   #ifdef HFI_2XPWM
@@ -204,7 +204,7 @@ int HFIBLDCMotor::alignCurrentSense() {
   exit_flag = current_sense->driverAlign(voltage_sensor_align);
   if(!exit_flag){
     // error in current sense - phase either not measured or bad connection
-    SIMPLEFOC_DEBUG("MOT: Align error!");
+    SIMPLEFOC_DEBUG("MOT: Align error! ", exit_flag);
     exit_flag = 0;
   }else{
     // output the alignment status flag
@@ -325,10 +325,7 @@ int HFIBLDCMotor::absoluteZeroSearch() {
   return !sensor->needsSearch();
 }
 
-void IRAM_ATTR HFIBLDCMotor::process_hfi(){
-  // digitalToggle(PC10);
-  // digitalToggle(PC10);
-
+void HFIBLDCMotor::process_hfi(){
   // if hfi off, handle in normal way
   if (hfi_on == false || enabled==0) {
     hfi_firstcycle=true;
@@ -345,8 +342,6 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
 
   if (!is_v0) {
     driver->setPwm(Ua, Ub, Uc);
-    // digitalToggle(PC10);
-    // digitalToggle(PC10);
     return;
   }
   #endif
@@ -366,11 +361,10 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
 
   if(fabs(current_meas.d)+fabs(current_meas.q)>ocp_protection_limit){
     ocp_cycles_counter+=1;
-  }
-
-  else{
+  } else{
     ocp_cycles_counter=0;
   }
+
   if(ocp_cycles_counter>=ocp_protection_maxcycles){
     enabled=0;
     driver->setPwm(0,0,0);
@@ -380,32 +374,24 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
 
   hfi_v_act = hfi_v;
 
-  if(start_polarity_alignment)
-  {
+  if(start_polarity_alignment) {
     if(polarity_counter<polarity_cycles){
       voltage.d=0;
       voltage.q=0;
-    }
-    else if(polarity_counter==polarity_cycles){
+    } else if(polarity_counter==polarity_cycles){
       voltage.d=polarity_alignment_voltage;
-    }
-    else if(polarity_counter<2*polarity_cycles){
+    } else if(polarity_counter<2*polarity_cycles){
         polarity_max_pos+=current_meas.d; 
-    }
-    else if (polarity_counter>=2*polarity_cycles && polarity_counter<4*polarity_cycles){
+    } else if (polarity_counter>=2*polarity_cycles && polarity_counter<4*polarity_cycles){
       voltage.d=0;
       voltage.q=0;
-    }
-    else if (polarity_counter==4*polarity_cycles){
+    } else if (polarity_counter==4*polarity_cycles){
       voltage.d=-polarity_alignment_voltage;
-    }
-    else if (polarity_counter<5*polarity_cycles){
+    } else if (polarity_counter<5*polarity_cycles){
       polarity_max_neg-=current_meas.d;
-    }
-    else if(polarity_counter<6*polarity_cycles){
+    } else if(polarity_counter<6*polarity_cycles){
       voltage.d=0;
-    }
-    else{
+    } else {
       if(polarity_max_neg>polarity_max_pos){
         polarity_correction=-1.0;
       }
@@ -416,9 +402,7 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
       return;
     }
     polarity_counter+=1;
-
-  }else // not align
-  {
+  } else { // not align
     flux_alpha = flux_alpha + (Ualpha - phase_resistance * ABcurrent.alpha) * Ts - phase_inductance * (ABcurrent.alpha - i_alpha_prev);
     flux_beta  =  flux_beta  + (Ubeta  - phase_resistance * ABcurrent.beta)  * Ts - phase_inductance * (ABcurrent.beta  - i_beta_prev);
     
@@ -431,12 +415,8 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
     i_beta_prev=ABcurrent.beta;
 
     flux_observer_angle=_atan2(flux_beta,flux_alpha);
-    if(polarity_correction<0){
-      flux_observer_angle-=_PI;
-    }
-    while(flux_observer_angle<0){
-      flux_observer_angle+=_2PI;
-    }
+    if(polarity_correction<0){ flux_observer_angle-=_PI; }
+    while(flux_observer_angle<0){ flux_observer_angle+=_2PI; }
     float iir_coef=0.99;
     //
     bemf=bemf*(iir_coef)+(1.0-iir_coef)*(polarity_correction*(voltage.q - phase_resistance * current_meas.q));
@@ -444,7 +424,7 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
 
     if(bemf>bemf_threshold || bemf<-bemf_threshold){
       bemf_count+=2;
-    }else{
+    } else {
       bemf_count-=2;
       if(bemf_count<0) {bemf_count=0;}
     }
@@ -457,8 +437,7 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
       // sensorless_out=flux_observer_angle;
       // sensorless_velocity = flux_observer_velocity;
       hfi_v_act=0;
-    }else // do hfi
-    {
+    } else { // do hfi
       if(usedFOlast==true){
         usedFOlast=false;
         hfi_int = flux_observer_velocity * pole_pairs * Ts;
@@ -493,8 +472,7 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
       delta_current.q = current_high.q - current_low.q;
       delta_current.d = current_high.d - current_low.d;
 
-      if (last_hfi_v != hfi_v || last_Ts != Ts || last_Ld != Ld || last_Lq != Lq || last_pp != pole_pairs)
-        {
+      if (last_hfi_v != hfi_v || last_Ts != Ts || last_Ld != Ld || last_Lq != Lq || last_pp != pole_pairs) {
           predivAngleest = 1.0f / (hfi_v * Ts * ( 1.0f / Lq - 1.0f / Ld ) );
           last_hfi_v = hfi_v;
           last_Ts = Ts;
@@ -537,12 +515,10 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
     current_err.q = polarity_correction * current_setpoint.q - current_meas.q;
     current_err.d = polarity_correction * current_setpoint.d - current_meas.d;
 
-    if (bemf_count <= fo_hysteresis_threshold)
-    {
+    if (bemf_count <= fo_hysteresis_threshold) {
       sensorless_out = hfi_angle;
       sensorless_velocity = hfi_velocity;
-    }else
-    {
+    } else {
       sensorless_out = flux_observer_angle;
       sensorless_velocity = flux_observer_velocity;
       usedFOlast = true;
@@ -624,10 +600,6 @@ void IRAM_ATTR HFIBLDCMotor::process_hfi(){
   float d_angle = sensorless_out - electrical_angle;
   if(abs(d_angle) > (0.8f*_2PI) ) hfi_full_turns += ( d_angle > 0.0f ) ? -1.0f : 1.0f; 
   electrical_angle = sensorless_out;
-// digitalToggle(PC10);
-  // digitalToggle(PC10);  
-  // digitalToggle(PC10);
-  // digitalToggle(PC10);
 }
 
 // Iterative function looping FOC algorithm, setting Uq on the Motor
