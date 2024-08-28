@@ -146,12 +146,14 @@ int HFIBLDCMotor::initFOC() {
   #else
     Ts = 1.0f/((float)driver->pwm_frequency);
   #endif
-  Ts_L = 2.0f*Ts * ( 1 / Lq - 1 / Ld );
+  predivAngleest = 1.0f / (hfi_v * Ts * ( 1.0f / Lq - 1.0f / Ld ) );
+  Ts_div = 1.0f / Ts;
+  Ts_pp_div = 1.0f / (Ts * pole_pairs);
   motor_status = FOCMotorStatus::motor_calibrating;
   polarity_cycles=(int)(3.5*(Ld/phase_resistance)/Ts);
-  flux_linkage = 60.0 / ( _sqrt(3) * _PI * (KV_rating) * (pole_pairs * 2));
-  PID_current_d.output_ramp = (20000.0f*0.02f*Ld)/Ts; // A per cycle V=(A*H)/s
-  PID_current_q.output_ramp = (20000.0f*0.05f*Lq)/Ts; // A per cycle
+  flux_linkage = 70.0 / ( _sqrt(3) * _PI * (KV_rating) * (pole_pairs * 2));
+  // PID_current_d.output_ramp = (60000.0f*0.02f*Ld)/Ts; // A per cycle V=(A*H)/s
+  // PID_current_q.output_ramp = (60000.0f*0.05f*Lq)/Ts; // A per cycle
   // align motor if necessary
   // alignment necessary for encoders!
   // sensor and motor alignment - can be skipped
@@ -417,10 +419,10 @@ void HFIBLDCMotor::process_hfi(){
     flux_observer_angle=_atan2(flux_beta,flux_alpha);
     if(polarity_correction<0){ flux_observer_angle-=_PI; }
     while(flux_observer_angle<0){ flux_observer_angle+=_2PI; }
-    float iir_coef=0.99;
+    constexpr float iir_coef=0.99;
     //
     bemf=bemf*(iir_coef)+(1.0-iir_coef)*(polarity_correction*(voltage.q - phase_resistance * current_meas.q));
-    flux_observer_velocity = flux_observer_velocity*iir_coef+(1.0-iir_coef)*((bemf*KV_rating*_SQRT3*_2PI)/(60.0f)); 
+    flux_observer_velocity = flux_observer_velocity*iir_coef+(1.0-iir_coef)*((bemf*KV_rating*_SQRT3*_2PI)/(70.0f)); 
 
     if(bemf>bemf_threshold || bemf<-bemf_threshold){
       bemf_count+=2;
@@ -444,8 +446,7 @@ void HFIBLDCMotor::process_hfi(){
         hfi_angle = flux_observer_angle;
       }
 
-      if (hfi_firstcycle)
-      {
+      if (hfi_firstcycle) {
         hfi_v_act /= 2.0f;
         hfi_firstcycle = false;
       }
@@ -472,20 +473,9 @@ void HFIBLDCMotor::process_hfi(){
       delta_current.q = current_high.q - current_low.q;
       delta_current.d = current_high.d - current_low.d;
 
-      if (last_hfi_v != hfi_v || last_Ts != Ts || last_Ld != Ld || last_Lq != Lq || last_pp != pole_pairs) {
-          predivAngleest = 1.0f / (hfi_v * Ts * ( 1.0f / Lq - 1.0f / Ld ) );
-          last_hfi_v = hfi_v;
-          last_Ts = Ts;
-          last_Ld = Ld;
-          last_Lq = Lq;
-          last_pp = pole_pairs;
-          Ts_div = 1.0f / Ts;
-          Ts_pp_div = 1.0f / (Ts * pole_pairs);
-        }
-
-        // hfi_curangleest = delta_current.q / (hfi_v * Ts_L );  // this is about half a us faster than vv
-        // hfi_curangleest =  0.5f * delta_current.q / (hfi_v * Ts * ( 1.0f / Lq - 1.0f / Ld ) );
-        hfi_curangleest =  0.5f * delta_current.q * predivAngleest;
+      // hfi_curangleest = delta_current.q / (hfi_v * Ts_L );  // this is about half a us faster than vv
+      // hfi_curangleest =  0.5f * delta_current.q / (hfi_v * Ts * ( 1.0f / Lq - 1.0f / Ld ) );
+      hfi_curangleest =  0.5f * delta_current.q * predivAngleest;
 
       if (hfi_curangleest > error_saturation_limit)
         hfi_curangleest = error_saturation_limit;
@@ -559,9 +549,7 @@ void HFIBLDCMotor::process_hfi(){
   // stateX->Vd += stateX->VdFF;
 
   // setPhaseVoltage(voltage.q, voltage.d, electrical_angle);
-    // Inverse park transform
-
-  
+    // Inverse park transform  
 
   Ualpha =  _ca * voltage.d - _sa * voltage.q;  // -sin(angle) * Uq;
   Ubeta =  _sa * voltage.d + _ca * voltage.q;    //  cos(angle) * Uq;

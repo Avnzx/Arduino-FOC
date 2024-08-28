@@ -49,7 +49,6 @@ class HFIBLDCMotor: public FOCMotor
     
 
     float Ts = 1.0f/60000.0f;
-    float Ts_L = Ts * ( 1 / Lq - 1 / Ld );
     float current_bandwidth = 1000;
     float polarity_max_pos=0;
     float polarity_max_neg=0;
@@ -175,11 +174,6 @@ class HFIBLDCMotor: public FOCMotor
     float sensorless_out_prev=0;
     float hfi_angle_prev = 0;
     boolean usedFOlast;
-    float last_hfi_v = hfi_v;
-    float last_Ts = Ts;
-    float last_Ld = Ld;
-    float last_Lq = Lq;
-    int last_pp = pole_pairs;
     float Ts_pp_div = 1.0f / (Ts * pole_pairs);
     float Ts_div = 1.0f / Ts;
     float predivAngleest = 1.0f / (hfi_v * Ts * ( 1.0f / Lq - 1.0f / Ld ) );
